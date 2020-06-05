@@ -1,0 +1,269 @@
+<html>
+
+<head>
+    <title>Express</title>
+    <link rel="stylesheet" href="/stylesheets/style.css">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css"
+          integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+</head>
+<style>
+
+    .button-group, .play-area {
+        border: 1px solid grey;
+        padding: 1em 1%;
+        margin-bottom: 1em;
+    }
+
+    .button {
+        padding: 0.5em;
+        margin-right: 1em;
+    }
+
+    .play-area-sub {
+        width: 47%;
+        padding: 1em 1%;
+        display: inline-block;
+        text-align: center;
+    }
+
+    #capture {
+        display: none;
+    }
+
+    #snapshot {
+        display: inline-block;
+        width: 320px;
+        height: 240px;
+    }
+</style>
+<body>
+<a class="btn-success" id="spotifyLogin" href="./spotifyLogin" target="_blank">Login into spotify</a>
+
+<!-- The buttons to control the stream -->
+<div class="button-group">
+    <button id="btn-start" type="button" class="button">Start Recording</button>
+    <button id="btn-stop" type="button" class="button">Stop Recording</button>
+    <button id="btn-capture" type="button" class="button">Capture Emotion</button>
+</div>
+<div id="spotifySettings" hidden class="btn-toolbar mb-3" role="toolbar" aria-label="Toolbar with button groups">
+    <button id="happy" type="button" class="btn btn-secondary spotifyCreate">Cheer me up!</button>
+    <button id="angry" type="button" class="btn btn-secondary spotifyCreate">I can the feel anger..</button>
+    <button id="scared" type="button" class="btn btn-secondary spotifyCreate">I am scared, calm me down</button>
+    <button id="sad" type="button" class="btn btn-secondary spotifyCreate">So depressed</button>
+</div>
+<p id="hold5" hidden>Please hold for 5 seconds.</p>
+<p id="holdProcess" hidden>Processing...</p>
+<p id="emotion" hidden></p>
+
+<!-- Video Element & Canvas -->
+<div class="play-area">
+    <div class="play-area-sub">
+        <h3>Camera</h3>
+        <video id="stream" width="320" height="240"></video>
+    </div>
+    <div class="play-area-sub">
+        <canvas id="capture" width="320" height="240"></canvas>
+        <div hidden id="snapshot"></div>
+    </div>
+</div>
+
+<form hidden action="/" method="post" enctype="multipart/form-data">
+    <input type="file" name="uploadedImages" value="uploading_img" multiple>
+    <input type="submit" value="uploading_img">
+</form>
+
+</body>
+<script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"
+        integrity="sha384-DfXdz2htPH0lsSSs5nCTpuj/zy4C+OGpamoFVy38MVBnE+IbbVYUew+OrCXaRkfj"
+        crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo"
+        crossorigin="anonymous"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/js/bootstrap.min.js"
+        integrity="sha384-OgVRvuATP1z7JjHLkuOU7Xw704+h835Lr+6QL9UvYjZE3Ipu6Tp75j7Bh/kR0JKI"
+        crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+<script>
+    $(document).ready(() => {
+        const socket = io();
+        let uid;
+        let spotifyLogin;
+
+        socket.on('userInfo', info => {
+            uid = info.uid;
+            spotifyLogin = info.spotify;
+            if (spotifyLogin) {
+                document.getElementById("spotifyLogin").innerText = 'Spotify login successful.';
+                document.getElementById("spotifyLogin").href = '#';
+                document.getElementById("spotifyLogin").removeAttribute('target');
+            }
+        });
+        socket.on('emotion', emotion => {
+            console.log(emotion)
+        });
+        socket.on('spotifyLogin', sUid => {
+            if (sUid === uid) {
+                window.location.reload();
+                document.getElementById("spotifyLogin").innerText = 'Spotify login successful.';
+                document.getElementById("spotifyLogin").href = '#';
+                document.getElementById("spotifyLogin").removeAttribute('target');
+                spotifyLogin = true;
+            }
+        });
+        let emotion;
+        socket.on('scriptDone', data => {
+            if (data.uid === uid) {
+                document.getElementById("holdProcess").hidden = true;
+                document.getElementById("emotion").hidden = false;
+                console.log(data.emotion);
+                if (data.emotion.includes('no face')) {
+                    document.getElementById("emotion").innerText = 'We couldn\'t detect your face. Please try again.';
+                    document.getElementById("spotifySettings").hidden = false;
+                } else {
+                    document.getElementById("emotion").innerText = 'Your emotion is ' + data.emotion + '.';
+                    emotion = data.emotion;
+                    document.getElementById("spotifySettings").hidden = false;
+                }
+            }
+        });
+        $('.spotifyCreate').click(function () {
+            socket.emit('spotifyCreate', $(this).prop('id'))
+        });
+        socket.on('done', () => {
+            alert('Playlist created, check your spotify playlists.')
+        });
+        var video = document.querySelector("#videoElement");
+
+        // if (navigator.mediaDevices.getUserMedia) {
+        //     navigator.mediaDevices.getUserMedia({video: true})
+        //         .then(function (stream) {
+        //             video.srcObject = stream;
+        //         })
+        //         .catch(function (err0r) {
+        //             console.log("Something went wrong!");
+        //         });
+        // }
+        // The buttons to start & stop stream and to capture the image
+        var btnStart = document.getElementById("btn-start");
+        var btnStop = document.getElementById("btn-stop");
+        var btnCapture = document.getElementById("btn-capture");
+
+        // The stream & capture
+        var stream = document.getElementById("stream");
+        var capture = document.getElementById("capture");
+        var snapshot = document.getElementById("snapshot");
+
+        // The video stream
+        var cameraStream = null;
+
+        // Attach listeners
+        btnStart.addEventListener("click", startStreaming);
+        btnStop.addEventListener("click", stopStreaming);
+        btnCapture.addEventListener("click", captureSnapshot);
+
+        // Start Streaming
+        function startStreaming() {
+
+            var mediaSupport = 'mediaDevices' in navigator;
+
+            if (mediaSupport && null == cameraStream) {
+
+                navigator.mediaDevices.getUserMedia({video: true})
+                    .then(function (mediaStream) {
+
+                        cameraStream = mediaStream;
+
+                        stream.srcObject = mediaStream;
+
+                        stream.play();
+                    })
+                    .catch(function (err) {
+
+                        console.log("Unable to access camera: " + err);
+                    });
+            } else {
+
+                alert('Your browser does not support media devices.');
+
+                return;
+            }
+        }
+
+        // Stop Streaming
+        function stopStreaming() {
+
+            if (null != cameraStream) {
+
+                var track = cameraStream.getTracks()[0];
+
+                track.stop();
+                stream.load();
+
+                cameraStream = null;
+            }
+        }
+
+        function captureSnapshot() {
+
+            if (null != cameraStream) {
+                document.getElementById("hold5").hidden = false;
+                document.getElementById("emotion").hidden = true;
+                var ctx = capture.getContext('2d');
+                var img = new Image();
+
+                ctx.drawImage(stream, 0, 0, capture.width, capture.height);
+
+                img.src = capture.toDataURL("image/png");
+                img.width = 240;
+
+                snapshot.innerHTML = '';
+
+                snapshot.appendChild(img);
+
+                var request = new XMLHttpRequest();
+
+                request.open("POST", "/", true);
+
+                var data = new FormData();
+                var dataURI = snapshot.firstChild.getAttribute("src");
+                var imageData = dataURItoBlob(dataURI);
+
+                // data.append("image", imageData, "myimage");
+                let imageCount = 0;
+                const interv1 = setInterval(function () {
+                    ctx.drawImage(stream, 0, 0, capture.width, capture.height);
+                    img.src = capture.toDataURL("image/png");
+                    img.width = 240;
+
+                    imageCount++;
+                    data.append("images", dataURItoBlob(img.getAttribute('src')));
+                    if (imageCount === 100) {
+                        request.send(data);
+                        document.getElementById("hold5").hidden = true;
+                        document.getElementById("holdProcess").hidden = false;
+                        clearInterval(interv1)
+                    }
+                }, 50);
+            }
+        }
+
+        function dataURItoBlob(dataURI) {
+
+            var byteString = atob(dataURI.split(',')[1]);
+            var mimeString = dataURI.split(',')[0].split(':')[1].split(';')[0];
+
+            var buffer = new ArrayBuffer(byteString.length);
+            var data = new DataView(buffer);
+
+            for (var i = 0; i < byteString.length; i++) {
+
+                data.setUint8(i, byteString.charCodeAt(i));
+            }
+
+            return new Blob([buffer], {type: mimeString});
+        }
+    });
+
+
+</script>
+</html>
